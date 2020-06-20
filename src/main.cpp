@@ -39,8 +39,8 @@ namespace {
 				"Controls the power limit of a given Nvidia GPU based on max fan speed\n\n"
 				"-f, --max-fan f     Specifies the target max fan speed, default is " << opt::max_fan_speed << "%\n"
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
-				"    --verbose       prints additional log every iteration (4 times a second)\n"
-				"    --help          prints this help and exit\n\n"
+				"    --verbose       Prints additional log every iteration (4 times a second)\n"
+				"    --help          Prints this help and exit\n\n"
 				"Run with root/admin privileges to be able to change the power limits\n\n"
 		<< std::flush;
 	}
