@@ -336,8 +336,14 @@ int main(int argc, char *argv[]) {
 		// only if those got changed
 		unsigned int	cur_pwr_limit = 0;
 		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementLimit(dev, &cur_pwr_limit));
-		if(cur_pwr_limit != gpu_pwr_limit)
+		if(cur_pwr_limit != gpu_pwr_limit) {
 			SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, gpu_pwr_limit));
+			if(opt::verbose)
+				std::cerr << "Restored original max power limit: " << gpu_pwr_limit << "mW" << std::endl;
+		} else {
+			if(opt::verbose)
+				std::cerr << "Unchanged max power limit: " << gpu_pwr_limit << "mW" << std::endl;
+		}
 		// shutdown nvml
 		nvml::nvmlShutdown();
 
