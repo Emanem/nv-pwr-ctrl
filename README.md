@@ -8,6 +8,7 @@ Simple utility to cap Nvidia GPU power limits on Linux based on max fan speed an
   * [Sudo Requirements](#sudo-requirements)
 * [How to build](#how-to-build)
   * [Dependencies](#dependencies)
+* [Known Issues](#known-issues)
 * [F.A.Q.](#faq)
 * [Task list](#task-list)
 
@@ -50,6 +51,10 @@ Simply run `make clean && make release` and you're done.
 ### Dependencies
 This executable is dependent on _NVML_ (i.e. _libnvidia-ml.so_), but it tries to load it dynamically at run time, which means that no Nvidia dependencies are required to build this.
 It does require the proprietary drivers correctly installed.
+
+## Known Issues
+List of known issues:
+* Sometimes _NVML_ API may fail (i.e. `Exception: nvml::nvmlDeviceSetPowerManagementLimit(dev, tgt_gpu_pwr_limit) failed, error: 2`), thus leaving the _Power Limits_ to potentially low settings (if running with low fan speed or GPU temperature).<br/>In such cases, simply restart the application as `sudo` again and stop it, it should fix it. Worst case scenario, a restart of the machine will do.
 
 ## F.A.Q
 
