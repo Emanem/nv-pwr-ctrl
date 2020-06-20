@@ -25,12 +25,13 @@
 #include <time.h>
 
 namespace {
-	const char*	VERSION = "0.0.1";
+	const char*	VERSION = "0.0.2";
 
 	// settings/options management
 	namespace opt {
 		unsigned int	max_fan_speed = 80,
 				gpu_id = 0;
+		bool		verbose = false;
 	}
 
 	void print_help(const char *prog, const char *version) {
@@ -38,16 +39,19 @@ namespace {
 				"Controls the power limit of a given Nvidia GPU based on max fan speed\n\n"
 				"-f, --max-fan f     Specifies the target max fan speed, default is " << opt::max_fan_speed << "%\n"
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
+				"    --verbose       prints additional log every iteration (4 times a second)\n"
 				"    --help          prints this help and exit\n\n"
+				"Run with root/admin privileges to be able to change the power limits\n\n"
 		<< std::flush;
 	}
 
 	int parse_args(int argc, char *argv[], const char *prog, const char *version) {
 		int			c;
 		static struct option	long_options[] = {
-			{"max-fan",		required_argument, 0,	'f'},
-			{"gpu-id",		required_argument, 0,	0},
-			{"help",		no_argument,	   0,	0},
+			{"max-fan",	required_argument, 0,	'f'},
+			{"gpu-id",	required_argument, 0,	0},
+			{"verbose",	no_argument,       0,	0},
+			{"help",	no_argument,	   0,	0},
 			{0, 0, 0, 0}
 		};
 
@@ -70,7 +74,10 @@ namespace {
 					const int	g_id = std::atoi(optarg);
 					if(g_id >= 0)
 						opt::gpu_id = g_id;
+				} else if (!std::strcmp("verbose", long_options[option_index].name)) {
+					opt::verbose = true;
 				}
+
 			} break;
 
 			case 'f': {
@@ -114,6 +121,7 @@ namespace nvml {
 	typedef int (*fp_nvmlDeviceGetHandleByIndex_v2)(unsigned int, nvmlDevice_t*);
 	typedef int (*fp_nvmlDeviceGetName)(nvmlDevice_t, char*, unsigned int);
 	typedef int (*fp_nvmlDeviceGetPowerManagementDefaultLimit)(nvmlDevice_t, unsigned int*);
+	typedef int (*fp_nvmlDeviceGetPowerManagementLimit)(nvmlDevice_t, unsigned int*);
 	typedef int (*fp_nvmlDeviceGetFanSpeed)(nvmlDevice_t, unsigned int*);
 	typedef int (*fp_nvmlDeviceGetTemperature)(nvmlDevice_t, const int, unsigned int*);
 	typedef int (*fp_nvmlDeviceGetPowerUsage)(nvmlDevice_t, unsigned int*);
@@ -126,6 +134,7 @@ namespace nvml {
 	fp_nvmlDeviceGetHandleByIndex_v2		nvmlDeviceGetHandleByIndex_v2 = 0;
 	fp_nvmlDeviceGetName				nvmlDeviceGetName = 0;
 	fp_nvmlDeviceGetPowerManagementDefaultLimit	nvmlDeviceGetPowerManagementDefaultLimit = 0;
+	fp_nvmlDeviceGetPowerManagementLimit		nvmlDeviceGetPowerManagementLimit = 0;
 	fp_nvmlDeviceGetFanSpeed			nvmlDeviceGetFanSpeed = 0;
 	fp_nvmlDeviceGetTemperature			nvmlDeviceGetTemperature = 0;
 	fp_nvmlDeviceGetPowerUsage			nvmlDeviceGetPowerUsage = 0;
@@ -145,6 +154,7 @@ namespace nvml {
 		LOAD_SYMBOL(nvmlDeviceGetHandleByIndex_v2);
 		LOAD_SYMBOL(nvmlDeviceGetName);
 		LOAD_SYMBOL(nvmlDeviceGetPowerManagementDefaultLimit);
+		LOAD_SYMBOL(nvmlDeviceGetPowerManagementLimit);
 		LOAD_SYMBOL(nvmlDeviceGetFanSpeed);
 		LOAD_SYMBOL(nvmlDeviceGetTemperature);
 		LOAD_SYMBOL(nvmlDeviceGetPowerUsage);
@@ -200,11 +210,20 @@ int main(int argc, char *argv[]) {
 		// get default power limit
 		unsigned int	gpu_pwr_limit = 0;
 		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementDefaultLimit(dev, &gpu_pwr_limit));
+		// print main info
+		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
+		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
+		std::cerr << "Press Ctrl+C to quit" << std::endl;
 		// main loop
 		const unsigned int	PWR_DELTA = 1000,
 		      			MIN_PWR_LIMIT = 50*1000; // min 50k mW
 		// variable target gpu power limit
 		unsigned int	tgt_gpu_pwr_limit = gpu_pwr_limit;
+		size_t		iter = 0;
+		if(opt::verbose) {
+			// print header
+			std::cout << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
+		}
 		while(run) {
 			// 1. get the fan speed and temperature
 			unsigned int	cur_fan_speed = 0,
@@ -214,7 +233,9 @@ int main(int argc, char *argv[]) {
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetTemperature(dev, 0, &cur_gpu_temp));
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerUsage(dev, &cur_gpu_pwr));
 
-			std::cout << "Cur fan speed: " << cur_fan_speed << "%, temp: " << cur_gpu_temp << "C, power: " << cur_gpu_pwr << "mW, limit: " << tgt_gpu_pwr_limit << "mW" << std::endl;
+			if(opt::verbose) {
+				std::cout << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
+			}
 
 			// 2. if the fan speed > than threshold
 			// then start reducing the power limit
@@ -237,7 +258,14 @@ int main(int argc, char *argv[]) {
 			// sleep for 1/4 of a second
 			struct timespec	ts = { 0, 250*1000*1000 };
 			nanosleep(&ts, 0);
+			++iter;
 		}
+		// before quitting, restore original power limits
+		// only if those got changed
+		unsigned int	cur_pwr_limit = 0;
+		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementLimit(dev, &cur_pwr_limit));
+		if(cur_pwr_limit != gpu_pwr_limit)
+			SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, gpu_pwr_limit));
 		// shutdown nvml
 		nvml::nvmlShutdown();
 
