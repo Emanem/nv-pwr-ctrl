@@ -195,6 +195,40 @@ namespace nvml {
 			throw std::runtime_error((std::string("nvmlDeviceGetHandleByIndex_v2 failed: ") + std::to_string(rv)).c_str());
 		return dev;
 	}
+
+	class throttle {
+	public:
+		enum action {
+			PWR_INC = 0,
+			PWR_DEC,
+			PWR_CNST
+		};
+
+		struct data {
+			unsigned int	fan_speed,
+					gpu_temp;
+		};
+
+		virtual action check(const data& d) = 0;
+
+		virtual ~throttle() {
+		}
+	};
+
+	class fan_speed_th : public throttle {
+		const unsigned int	mfs_;
+	public:
+		fan_speed_th(const unsigned int mfs) : mfs_(mfs) {
+		}
+
+		virtual action check(const data& d) {
+			if(d.fan_speed > mfs_)
+				return action::PWR_DEC;
+			else if(d.fan_speed < mfs_)
+				return action::PWR_INC;
+			return action::PWR_CNST;
+		}
+	};
 }
 
 int main(int argc, char *argv[]) {
@@ -209,6 +243,7 @@ int main(int argc, char *argv[]) {
 		std::unique_ptr<void, void(*)(void*)>	nvml_so(dlopen(nvml::SO_NAME, RTLD_LAZY|RTLD_LOCAL), [](void* p){ if(p) dlclose(p); });
 		if(!nvml_so)
 			throw std::runtime_error("Can't find/load NVML");
+		std::unique_ptr<nvml::throttle>		thr(new nvml::fan_speed_th(opt::max_fan_speed));
 		// load nvml functions/symbols
 		nvml::load_functions(nvml_so.get());
 
@@ -257,15 +292,30 @@ int main(int argc, char *argv[]) {
 				*log_csv << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
 			}
 
-			// 2. if the fan speed > than threshold
+			auto fn_do_sleep = [&iter](void) -> void {
+				// sleep for 1/4 of a second
+				struct timespec	ts = { 0, 250*1000*1000 };
+				nanosleep(&ts, 0);
+				++iter;
+			};
+
+			if(opt::do_not_limit) {
+				fn_do_sleep();
+				continue;
+			}
+
+			switch(thr->check({ cur_fan_speed, cur_gpu_temp })) {
+			// 2. if the check tells us to decrease
 			// then start reducing the power limit
-			if(cur_fan_speed > opt::max_fan_speed) {
+			case nvml::throttle::action::PWR_DEC: {
 				tgt_gpu_pwr_limit -= PWR_DELTA;
 				if(tgt_gpu_pwr_limit < MIN_PWR_LIMIT) {
 					tgt_gpu_pwr_limit = MIN_PWR_LIMIT;
 				}
 				SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, tgt_gpu_pwr_limit));
-			} else if (cur_fan_speed < opt::max_fan_speed) {
+			} break;
+
+			case nvml::throttle::action::PWR_INC: {
 				// 3. increase the power limit
 				if(tgt_gpu_pwr_limit < gpu_pwr_limit) {
 					tgt_gpu_pwr_limit += PWR_DELTA;
@@ -273,12 +323,14 @@ int main(int argc, char *argv[]) {
 						tgt_gpu_pwr_limit = gpu_pwr_limit;
 					SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, tgt_gpu_pwr_limit));
 				}
+			} break;
+
+			case nvml::throttle::action::PWR_CNST:
+			default:
+				break;
 			}
 
-			// sleep for 1/4 of a second
-			struct timespec	ts = { 0, 250*1000*1000 };
-			nanosleep(&ts, 0);
-			++iter;
+			fn_do_sleep();
 		}
 		// before quitting, restore original power limits
 		// only if those got changed
