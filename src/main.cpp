@@ -62,7 +62,7 @@ namespace {
 			{"gpu-id",	required_argument, 0,	0},
 			{"do-not-limit",no_argument,       0,	0},
 			{"fan-ctrl",	required_argument, 0,	0},
-			{"log-csv",	required_argument, 0,	'l'},
+			{"log-csv",	no_argument,       0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
 			{0, 0, 0, 0}
@@ -72,7 +72,7 @@ namespace {
 			// getopt_long stores the option index here
 			int		option_index = 0;
 
-			if(-1 == (c = getopt_long(argc, argv, "f:l:", long_options, &option_index)))
+			if(-1 == (c = getopt_long(argc, argv, "f:l", long_options, &option_index)))
 				break;
 
 			switch (c) {
