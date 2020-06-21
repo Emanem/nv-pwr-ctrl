@@ -28,7 +28,10 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
 -f, --max-fan f     Specifies the target max fan speed, default is 80%
     --gpu-id i      Specifies a specific gpu id to control, default is 0
     --do-not-limit  Don't limit power - useful to print stats for testing
--l, --log-csv l     Prints CSV log-like information to file l
+    --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:
+                    'simple' - Reactive based on current fan speed (default)
+                    'wavg'   - Weights averages and smooths transitions
+-l, --log-csv       Prints CSV log-like information to std out
     --verbose       Prints additional log every iteration (4 times a second)
     --help          Prints this help and exit
 

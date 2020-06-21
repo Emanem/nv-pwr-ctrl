@@ -17,13 +17,13 @@
 
 #include <iostream>
 #include <string>
-#include <fstream>
 #include <cstring>
 #include <csignal>
 #include <getopt.h>
 #include <memory>
 #include <dlfcn.h>
 #include <time.h>
+#include "ctrl.h"
 
 namespace {
 	const char*	VERSION = "0.0.3";
@@ -31,10 +31,12 @@ namespace {
 	// settings/options management
 	namespace opt {
 		unsigned int	max_fan_speed = 80,
-				gpu_id = 0;
+				gpu_id = 0,
+				sleep_interval_ms = 250;
 		bool		do_not_limit = false,
-				verbose = false;
-		std::string	logfile;
+				verbose = false,
+				log_csv = false;
+		std::string	fan_ctrl = "simple";
 	}
 
 	void print_help(const char *prog, const char *version) {
@@ -43,7 +45,10 @@ namespace {
 				"-f, --max-fan f     Specifies the target max fan speed, default is " << opt::max_fan_speed << "%\n"
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
 				"    --do-not-limit  Don't limit power - useful to print stats for testing\n"
-				"-l, --log-csv l     Prints CSV log-like information to file l\n"
+				"    --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:\n"
+				"                    'simple' - Reactive based on current fan speed (default)\n"
+				"                    'wavg'   - Weights averages and smooths transitions\n"
+				"-l, --log-csv       Prints CSV log-like information to std out\n"
 				"    --verbose       Prints additional log every iteration (4 times a second)\n"
 				"    --help          Prints this help and exit\n\n"
 				"Run with root/admin privileges to be able to change the power limits\n\n"
@@ -56,6 +61,7 @@ namespace {
 			{"max-fan",	required_argument, 0,	'f'},
 			{"gpu-id",	required_argument, 0,	0},
 			{"do-not-limit",no_argument,       0,	0},
+			{"fan-ctrl",	required_argument, 0,	0},
 			{"log-csv",	required_argument, 0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
@@ -85,6 +91,8 @@ namespace {
 					opt::verbose = true;
 				} else if (!std::strcmp("do-not-limit", long_options[option_index].name)) {
 					opt::do_not_limit = true;
+				} else if (!std::strcmp("fan-ctrl", long_options[option_index].name)) {
+					opt::fan_ctrl = optarg;
 				} else {
 					throw std::runtime_error((std::string("Unknown option: ") + long_options[option_index].name).c_str());
 				}
@@ -98,7 +106,7 @@ namespace {
 			} break;
 
 			case 'l': {
-				opt::logfile = optarg;
+				opt::log_csv = true;
 			} break;
 
 			case '?':
@@ -195,40 +203,6 @@ namespace nvml {
 			throw std::runtime_error((std::string("nvmlDeviceGetHandleByIndex_v2 failed: ") + std::to_string(rv)).c_str());
 		return dev;
 	}
-
-	class throttle {
-	public:
-		enum action {
-			PWR_INC = 0,
-			PWR_DEC,
-			PWR_CNST
-		};
-
-		struct data {
-			unsigned int	fan_speed,
-					gpu_temp;
-		};
-
-		virtual action check(const data& d) = 0;
-
-		virtual ~throttle() {
-		}
-	};
-
-	class fan_speed_th : public throttle {
-		const unsigned int	mfs_;
-	public:
-		fan_speed_th(const unsigned int mfs) : mfs_(mfs) {
-		}
-
-		virtual action check(const data& d) {
-			if(d.fan_speed > mfs_)
-				return action::PWR_DEC;
-			else if(d.fan_speed < mfs_)
-				return action::PWR_INC;
-			return action::PWR_CNST;
-		}
-	};
 }
 
 int main(int argc, char *argv[]) {
@@ -237,13 +211,10 @@ int main(int argc, char *argv[]) {
 		std::signal(SIGINT, sigint_handler);
 		// parse args and load nvml
 		const auto				rv = parse_args(argc, argv, argv[0], VERSION);
-		std::unique_ptr<std::ofstream>		log_csv(opt::logfile.empty() ? 0 : new std::ofstream(opt::logfile));
-		if(!opt::logfile.empty() && !log_csv)
-			throw std::runtime_error(std::string("Can't open log csv file \"" + opt::logfile + "\"").c_str());
 		std::unique_ptr<void, void(*)(void*)>	nvml_so(dlopen(nvml::SO_NAME, RTLD_LAZY|RTLD_LOCAL), [](void* p){ if(p) dlclose(p); });
 		if(!nvml_so)
 			throw std::runtime_error("Can't find/load NVML");
-		std::unique_ptr<nvml::throttle>		thr(new nvml::fan_speed_th(opt::max_fan_speed));
+		std::unique_ptr<ctrl::throttle>		thr(ctrl::get_fan_ctrl(opt::fan_ctrl, { opt::max_fan_speed, 1000/opt::sleep_interval_ms, opt::verbose }));
 		// load nvml functions/symbols
 		nvml::load_functions(nvml_so.get());
 
@@ -268,6 +239,7 @@ int main(int argc, char *argv[]) {
 		// print main info
 		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
 		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
+		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
 		std::cerr << "Press Ctrl+C to quit" << std::endl;
 		// main loop
 		const unsigned int	PWR_DELTA = 1000,
@@ -275,9 +247,9 @@ int main(int argc, char *argv[]) {
 		// variable target gpu power limit
 		unsigned int	tgt_gpu_pwr_limit = gpu_pwr_limit;
 		size_t		iter = 0;
-		if(log_csv) {
+		if(opt::log_csv) {
 			// print header
-			*log_csv << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
+			std::cout << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
 		}
 		while(run) {
 			// 1. get the fan speed and temperature
@@ -288,13 +260,13 @@ int main(int argc, char *argv[]) {
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetTemperature(dev, 0, &cur_gpu_temp));
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerUsage(dev, &cur_gpu_pwr));
 
-			if(log_csv) {
-				*log_csv << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
+			if(opt::log_csv) {
+				std::cout << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
 			}
 
 			auto fn_do_sleep = [&iter](void) -> void {
 				// sleep for 1/4 of a second
-				struct timespec	ts = { 0, 250*1000*1000 };
+				struct timespec	ts = { opt::sleep_interval_ms/1000, (opt::sleep_interval_ms%1000)*1000*1000 };
 				nanosleep(&ts, 0);
 				++iter;
 			};
@@ -304,28 +276,29 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
-			switch(thr->check({ cur_fan_speed, cur_gpu_temp })) {
+			float	b_fact = 1.0;
+			switch(thr->check({ cur_fan_speed, cur_gpu_temp }, b_fact)) {
 			// 2. if the check tells us to decrease
 			// then start reducing the power limit
-			case nvml::throttle::action::PWR_DEC: {
-				tgt_gpu_pwr_limit -= PWR_DELTA;
+			case ctrl::action::PWR_DEC: {
+				tgt_gpu_pwr_limit -= b_fact*PWR_DELTA;
 				if(tgt_gpu_pwr_limit < MIN_PWR_LIMIT) {
 					tgt_gpu_pwr_limit = MIN_PWR_LIMIT;
 				}
 				SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, tgt_gpu_pwr_limit));
 			} break;
 
-			case nvml::throttle::action::PWR_INC: {
+			case ctrl::action::PWR_INC: {
 				// 3. increase the power limit
 				if(tgt_gpu_pwr_limit < gpu_pwr_limit) {
-					tgt_gpu_pwr_limit += PWR_DELTA;
+					tgt_gpu_pwr_limit += b_fact*PWR_DELTA;
 					if(tgt_gpu_pwr_limit > gpu_pwr_limit)
 						tgt_gpu_pwr_limit = gpu_pwr_limit;
 					SAFE_NVML_CALL(nvml::nvmlDeviceSetPowerManagementLimit(dev, tgt_gpu_pwr_limit));
 				}
 			} break;
 
-			case nvml::throttle::action::PWR_CNST:
+			case ctrl::action::PWR_CNST:
 			default:
 				break;
 			}
