@@ -4,7 +4,7 @@ Simple utility to cap Nvidia GPU power limits on Linux based on max fan speed an
 ## Table of Contents
 * [Purpose](#purpose)
 * [How to run](#how-to-run)
-  * [Sample Chart](#sample-chart)
+  * [Sample Charts](#sample-charts)
   * [Sudo Requirements](#sudo-requirements)
 * [How to build](#how-to-build)
   * [Dependencies](#dependencies)
@@ -40,10 +40,17 @@ Run with root/admin privileges to be able to change the power limits
 ```
 One can simply run the utility with `sudo ./nv-pwr-ctrl` and then push `Ctrl+C` to quit.
 
-### Sample Chart
-This chart has been produced in a ~5 minutes session of _Monster Hunter: World_. The game was playable all the time, at 3440x1440 with all graphical options/details set to max (apart _AA_) and _G-Sync_ on.<br/>I could not notice I was playing with a variable cap on _Power Limits_.
+### Sample Charts
+These chart have been produced in multiple ~5 minutes sessions of _Monster Hunter: World_. The game was playable all the time, at 3440x1440 with all graphical options/details set to max (apart _AA_) and _G-Sync_ on.<br/>I could not notice I was playing with a variable cap on _Power Limits_.
 
-![MH:W Chart](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage.png)
+`simple` fan control option:
+![MH:W Chart simple](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_simple.png)
+
+`wavg` fan control option:
+![MH:W Chart wavg](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_wavg.png)
+
+Reference when no power limit is set:
+![MH:W Chart no limit](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_nolimit.png)
 
 ### sudo requirements
 Unfortunately this utility needs `sudo` access because it invokes a function ([nvmlDeviceSetPowerManagementLimit](https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceCommands.html#group__nvmlDeviceCommands_1gb35472a72da70c8c8e9c9b108b3640b5)) which requires such elevated privileges.
