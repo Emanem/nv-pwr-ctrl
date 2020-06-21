@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
 		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
 		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
 		if(opt::do_not_limit)
-			std::cerr << "Do not limit has been set, max power limit won't be modified" << std::endl;
+			std::cerr << "Warning: '--do-not-limit' has been set, max power limit won't be modified" << std::endl;
 		std::cerr << "Press Ctrl+C to quit" << std::endl;
 		// main loop
 		const unsigned int	PWR_DELTA = 1000,
