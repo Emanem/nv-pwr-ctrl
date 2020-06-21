@@ -186,6 +186,19 @@ namespace nvml {
 #undef	LOAD_SYMBOL
 	}
 
+	int pvt_nvmlDeviceGetFanSpeed(nvmlDevice_t dev, unsigned int* v) {
+		const auto	rv = nvmlDeviceGetFanSpeed(dev, v);
+		if(rv == 999) {
+			// this is NVML_ERROR_UNKNOWN
+			// and is when nvidia-settings instead
+			// is able to report 125% fan speed
+			// then modify the value and return
+			*v = 125;
+			return 0;
+		}
+		return rv;
+	}
+
 	// all these functions require 'load_functions'
 	// to be called
 	nvmlDevice_t get_device_by_id(const unsigned int id) {
@@ -240,6 +253,8 @@ int main(int argc, char *argv[]) {
 		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
 		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
 		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
+		if(opt::do_not_limit)
+			std::cerr << "Do not limit has been set, max power limit won't be modified" << std::endl;
 		std::cerr << "Press Ctrl+C to quit" << std::endl;
 		// main loop
 		const unsigned int	PWR_DELTA = 1000,
@@ -256,7 +271,7 @@ int main(int argc, char *argv[]) {
 			unsigned int	cur_fan_speed = 0,
 					cur_gpu_temp = 0,
 					cur_gpu_pwr = 0;
-			SAFE_NVML_CALL(nvml::nvmlDeviceGetFanSpeed(dev, &cur_fan_speed));
+			SAFE_NVML_CALL(nvml::pvt_nvmlDeviceGetFanSpeed(dev, &cur_fan_speed));
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetTemperature(dev, 0, &cur_gpu_temp));
 			SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerUsage(dev, &cur_gpu_pwr));
 
