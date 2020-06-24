@@ -149,6 +149,7 @@ namespace nvml {
 	typedef int (*fp_nvmlDeviceGetTemperature)(nvmlDevice_t, const int, unsigned int*);
 	typedef int (*fp_nvmlDeviceGetPowerUsage)(nvmlDevice_t, unsigned int*);
 	typedef int (*fp_nvmlDeviceSetPowerManagementLimit)(nvmlDevice_t, unsigned int);
+	typedef const char* (*fp_nvmlErrorString)(int);
 
 	// functions themselves
 	fp_nvmlInit_v2					nvmlInit_v2 = 0;
@@ -162,6 +163,7 @@ namespace nvml {
 	fp_nvmlDeviceGetTemperature			nvmlDeviceGetTemperature = 0;
 	fp_nvmlDeviceGetPowerUsage			nvmlDeviceGetPowerUsage = 0;
 	fp_nvmlDeviceSetPowerManagementLimit		nvmlDeviceSetPowerManagementLimit = 0;
+	fp_nvmlErrorString				nvmlErrorString = 0;
 
 	void load_functions(void* nvml_so) {
 #define	LOAD_SYMBOL(x) \
@@ -182,6 +184,7 @@ namespace nvml {
 		LOAD_SYMBOL(nvmlDeviceGetTemperature);
 		LOAD_SYMBOL(nvmlDeviceGetPowerUsage);
 		LOAD_SYMBOL(nvmlDeviceSetPowerManagementLimit);
+		LOAD_SYMBOL(nvmlErrorString);
 
 #undef	LOAD_SYMBOL
 	}
@@ -209,7 +212,7 @@ namespace nvml {
 			std::cerr << "Found " << max_gpu << " Nvidia GPUs" << std::endl;
 		if(max_gpu < 1)
 			throw std::runtime_error("Can't find any Nvidia GPU on this system");
-		if(id > max_gpu)
+		if(id >= max_gpu)
 			throw std::runtime_error((std::string("Specified gpu id (") + std::to_string(id) + ") outside of max gpu available (" + std::to_string(max_gpu) + ")").c_str());
 		nvmlDevice_t	dev;
 		if(const int rv = nvmlDeviceGetHandleByIndex_v2(id, &dev))
@@ -235,7 +238,7 @@ int main(int argc, char *argv[]) {
 	do { \
 		const int rv = (x); \
 		if(rv) \
-			throw std::runtime_error((std::string(#x) + " failed, error: " + std::to_string(rv)).c_str()); \
+			throw std::runtime_error((std::string(#x) + " failed, error (" + std::to_string(rv) + "): " + nvml::nvmlErrorString(rv)).c_str()); \
 	} while(0);
 
 		// init nvml
