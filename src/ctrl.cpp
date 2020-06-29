@@ -23,10 +23,11 @@
 namespace {
 	class simple_fan_speed_th : public ctrl::throttle {
 		const unsigned int      mfs_,
-		      			rps_;
+					mgt_,
+					rps_;
 		unsigned int		cnt_;
 	public:
-		simple_fan_speed_th(const ctrl::params& p) : mfs_(p.max_fan_speed), rps_(p.rep_per_second), cnt_(0) {
+		simple_fan_speed_th(const ctrl::params& p) : mfs_(p.max_fan_speed), mgt_(p.max_gpu_temp), rps_(p.rep_per_second), cnt_(0) {
 		}
 
 		virtual ctrl::action check(const data& d, float& bump_factor) {
@@ -36,6 +37,10 @@ namespace {
 				return ctrl::action::PWR_CNST;
 
 			bump_factor = 1.0*rps_;
+			// ensure the temp is below the threshold
+			if(d.gpu_temp >= mgt_)
+				return ctrl::action::PWR_DEC;
+
 			if(d.fan_speed > mfs_) {
 				return ctrl::action::PWR_DEC;
 			} else if(d.fan_speed < mfs_)
@@ -45,7 +50,8 @@ namespace {
 	};
 
 	class wavg_fan_speed_th : public ctrl::throttle {
-		const unsigned int		mfs_;
+		const unsigned int		mfs_,
+						mgt_;
 		const bool			verbose_;
 		std::vector<unsigned int>	wfs_;
 		unsigned int			cnt_;
@@ -63,7 +69,7 @@ namespace {
 			return 1.0*mfs_ - accum;
 		}
 	public:
-		wavg_fan_speed_th(const ctrl::params& p) : mfs_(p.max_fan_speed), verbose_(p.verbose), cnt_(0) {
+		wavg_fan_speed_th(const ctrl::params& p) : mfs_(p.max_fan_speed), mgt_(p.max_gpu_temp), verbose_(p.verbose), cnt_(0) {
 			// will decide an action every 4
 			// seconds
 			wfs_.resize(4*p.rep_per_second);
@@ -80,7 +86,11 @@ namespace {
 			bump_factor = 1.0;
 			const double	avg = get_w_avg();
 			if(verbose_)
-				std::cerr << __FUNCTION__ << " Average: " << avg << std::endl;
+				std::cerr << __FUNCTION__ << " Average: " << avg << "\ttemp: " << d.gpu_temp << std::endl;
+			// ensure the temp is below the threshold
+			if(d.gpu_temp >= mgt_)
+				return ctrl::action::PWR_DEC;
+
 			if(avg <= -0.5) {
 				bump_factor *= -1.0*wfs_.size()*avg;
 				return ctrl::action::PWR_DEC;

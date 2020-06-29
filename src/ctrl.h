@@ -42,6 +42,7 @@ namespace ctrl {
 
 	struct params {
 		unsigned int	max_fan_speed,
+				max_gpu_temp,
 				rep_per_second;
 		bool		verbose;
 	};

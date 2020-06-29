@@ -26,11 +26,12 @@
 #include "ctrl.h"
 
 namespace {
-	const char*	VERSION = "0.0.3";
+	const char*	VERSION = "0.0.4";
 
 	// settings/options management
 	namespace opt {
-		unsigned int	max_fan_speed = 80,
+		unsigned int	max_fan_speed = 80, // 80% fan speed
+				max_gpu_temp = 80, // 80 C temperature
 				gpu_id = 0,
 				sleep_interval_ms = 250;
 		bool		do_not_limit = false,
@@ -43,6 +44,7 @@ namespace {
 		std::cerr <<	"Usage: " << prog << " [options]\nExecutes nv-pwr-ctrl " << version << "\n\n"
 				"Controls the power limit of a given Nvidia GPU based on max fan speed\n\n"
 				"-f, --max-fan f     Specifies the target max fan speed, default is " << opt::max_fan_speed << "%\n"
+				"-t, --max-temp t    Specifies the target max gpu temperature, default is " << opt::max_gpu_temp << "C\n"
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
 				"    --do-not-limit  Don't limit power - useful to print stats for testing\n"
 				"    --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:\n"
@@ -59,6 +61,7 @@ namespace {
 		int			c;
 		static struct option	long_options[] = {
 			{"max-fan",	required_argument, 0,	'f'},
+			{"max-temp",	required_argument, 0,	't'},
 			{"gpu-id",	required_argument, 0,	0},
 			{"do-not-limit",no_argument,       0,	0},
 			{"fan-ctrl",	required_argument, 0,	0},
@@ -72,7 +75,7 @@ namespace {
 			// getopt_long stores the option index here
 			int		option_index = 0;
 
-			if(-1 == (c = getopt_long(argc, argv, "f:l", long_options, &option_index)))
+			if(-1 == (c = getopt_long(argc, argv, "f:t:l", long_options, &option_index)))
 				break;
 
 			switch (c) {
@@ -103,6 +106,12 @@ namespace {
 				const int	f_speed = std::atoi(optarg);
 				if(f_speed > 0 && f_speed <= 100)
 					opt::max_fan_speed = f_speed;
+			} break;
+
+			case 't': {
+				const int	g_temp = std::atoi(optarg);
+				if(g_temp > 0 && g_temp <= 100)
+					opt::max_gpu_temp = g_temp;
 			} break;
 
 			case 'l': {
@@ -230,7 +239,7 @@ int main(int argc, char *argv[]) {
 		std::unique_ptr<void, void(*)(void*)>	nvml_so(dlopen(nvml::SO_NAME, RTLD_LAZY|RTLD_LOCAL), [](void* p){ if(p) dlclose(p); });
 		if(!nvml_so)
 			throw std::runtime_error("Can't find/load NVML");
-		std::unique_ptr<ctrl::throttle>		thr(ctrl::get_fan_ctrl(opt::fan_ctrl, { opt::max_fan_speed, 1000/opt::sleep_interval_ms, opt::verbose }));
+		std::unique_ptr<ctrl::throttle>		thr(ctrl::get_fan_ctrl(opt::fan_ctrl, { opt::max_fan_speed, opt::max_gpu_temp, 1000/opt::sleep_interval_ms, opt::verbose }));
 		// load nvml functions/symbols
 		nvml::load_functions(nvml_so.get());
 
