@@ -21,11 +21,12 @@ Not sure if there was already such simple utility, I've decided to roll my own, 
 ## How to run
 ```
 Usage: ./nv-pwr-ctrl [options]
-Executes nv-pwr-ctrl 0.0.3
+Executes nv-pwr-ctrl 0.0.4
 
 Controls the power limit of a given Nvidia GPU based on max fan speed
 
 -f, --max-fan f     Specifies the target max fan speed, default is 80%
+-t, --max-temp t    Specifies the target max gpu temperature, default is 80C
     --gpu-id i      Specifies a specific gpu id to control, default is 0
     --do-not-limit  Don't limit power - useful to print stats for testing
     --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:
@@ -78,7 +79,7 @@ List of known issues:
 ## Task list
 
 - [ ] ???
-- [ ] Drive the power limit based on GPU temperature
+- [x] Drive the power limit based on GPU temperature
 - [x] Rename _verbose_ option to _log_
 - [x] `std::cout` writes CSV useful for graphs
 - [x] Basic functionality
