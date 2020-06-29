@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
 		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementDefaultLimit(dev, &gpu_pwr_limit));
 		// print main info
 		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
-		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
+		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%, max GPU temp: " << opt::max_gpu_temp << "C" << std::endl;
 		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
 		if(opt::do_not_limit)
 			std::cerr << "Warning: '--do-not-limit' has been set, max power limit won't be modified" << std::endl;
