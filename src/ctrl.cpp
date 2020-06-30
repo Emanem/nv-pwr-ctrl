@@ -101,6 +101,31 @@ namespace {
 			return ctrl::action::PWR_CNST;
 		}
 	};
+
+	class simple_gpu_temp_th : public ctrl::throttle {
+		const unsigned int	mgt_,
+					rps_;
+		unsigned int		cnt_;
+	public:
+		simple_gpu_temp_th(const ctrl::params& p) : mgt_(p.max_gpu_temp), rps_(p.rep_per_second), cnt_(0) {
+		}
+
+		virtual ctrl::action check(const data& d, float& bump_factor) {
+			++cnt_;
+			cnt_ = cnt_%rps_;
+			if(cnt_)
+				return ctrl::action::PWR_CNST;
+
+			bump_factor = 1.0*rps_;
+
+			if(d.gpu_temp >= mgt_) {
+				return ctrl::action::PWR_DEC;
+			} else if(d.gpu_temp < mgt_*0.95)
+				return ctrl::action::PWR_INC;
+			return ctrl::action::PWR_CNST;
+		}
+	};
+
 }
 
 ctrl::throttle* ctrl::get_fan_ctrl(const std::string& ctrl_name, const ctrl::params& p) {
@@ -108,6 +133,8 @@ ctrl::throttle* ctrl::get_fan_ctrl(const std::string& ctrl_name, const ctrl::par
 		return new simple_fan_speed_th(p);
 	} else if(ctrl_name == "wavg") {
 		return new wavg_fan_speed_th(p);
+	} else if(ctrl_name == "gpu_temp") {
+		return new simple_gpu_temp_th(p);
 	}
 
 	throw std::runtime_error((std::string("Invalid fan ctrl name specified: \'") + ctrl_name + "\'").c_str());

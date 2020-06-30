@@ -30,13 +30,15 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
     --gpu-id i      Specifies a specific gpu id to control, default is 0
     --do-not-limit  Don't limit power - useful to print stats for testing
     --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:
-                    'simple' - Reactive based on current fan speed (default)
-                    'wavg'   - Weights averages and smooths transitions
+                    'simple'   - Reactive based on current fan speed (default)
+                    'wavg'     - Weights averages and smooths transitions
+                    'gpu_temp' - Reactive based on GPU temperature alone
 -l, --log-csv       Prints CSV log-like information to std out
     --verbose       Prints additional log every iteration (4 times a second)
     --help          Prints this help and exit
 
 Run with root/admin privileges to be able to change the power limits
+
 
 ```
 One can simply run the utility with `sudo ./nv-pwr-ctrl` and then push `Ctrl+C` to quit.
@@ -49,6 +51,9 @@ These chart have been produced in multiple ~5 minutes sessions of _Monster Hunte
 
 `wavg` fan control option:
 ![MH:W Chart wavg](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_wavg.png)
+
+`gpu_temp` fan control option:
+![MH:W Chart gpu temp](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_gpu_temp.png)
 
 Reference when no power limit is set:
 ![MH:W Chart no limit](https://raw.githubusercontent.com/Emanem/nv-pwr-ctrl/master/imgs/mhw_usage_nolimit.png)
@@ -73,8 +78,9 @@ List of known issues:
 2. *Can you support open-source Nvidia drivers?*<br/>No, this is using _NVML_ propritary libary.
 3. *The lower the fan speen (i.e. -f), the lower the FPS... is this expected?*<br/>Yes, because in order to keep the fan spinning at just _x_%, then the power will be limited. Having less power means keeping the GPU cooler but also less capable of coping with the demands of the CPU and the game.
 4. *Can you add feature *X* please?*<br/>Open a ticket and let's discuss...
-5. *Why didn't you use application *X*to achieve something similar?*<br/>I didn't want to have to install/compile other packages and didn't need _fancy_ UI. I needed a simple app I can spin with a script and stop with `Ctrl+C`. That's it.
+5. *Why didn't you use application *X* to achieve something similar?*<br/>I didn't want to have to install/compile other packages and didn't need _fancy_ UI. I needed a simple app I can spin with a script and stop with `Ctrl+C`. That's it.
 6. *Does this work only with a specific graphics API?*<br/>No, it is in fact agnostic of any API and would also be able to _power limit_ even _compute-only_ workloads on the GPU.
+7. *Which fan control algorithm would you reccomend?*<br/>As of now I would reccomend to set the fan control based on GPU temperature alone, `gpu_temp`.
 
 ## Task list
 
