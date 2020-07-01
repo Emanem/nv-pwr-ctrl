@@ -33,12 +33,13 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
                     'simple'   - Reactive based on current fan speed (default)
                     'wavg'     - Weights averages and smooths transitions
                     'gpu_temp' - Reactive based on GPU temperature alone
+    --report-max    On exit prints how many seconds the fan speed has been
+                    above max speed
 -l, --log-csv       Prints CSV log-like information to std out
     --verbose       Prints additional log every iteration (4 times a second)
     --help          Prints this help and exit
 
 Run with root/admin privileges to be able to change the power limits
-
 
 ```
 One can simply run the utility with `sudo ./nv-pwr-ctrl` and then push `Ctrl+C` to quit.

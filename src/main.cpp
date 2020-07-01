@@ -36,7 +36,8 @@ namespace {
 				sleep_interval_ms = 250;
 		bool		do_not_limit = false,
 				verbose = false,
-				log_csv = false;
+				log_csv = false,
+				report_max = false;
 		std::string	fan_ctrl = "simple";
 	}
 
@@ -51,6 +52,8 @@ namespace {
 				"                    'simple'   - Reactive based on current fan speed (default)\n"
 				"                    'wavg'     - Weights averages and smooths transitions\n"
 				"                    'gpu_temp' - Reactive based on GPU temperature alone\n"
+				"    --report-max    On exit prints how many seconds the fan speed has been\n"
+				"                    above max speed\n"
 				"-l, --log-csv       Prints CSV log-like information to std out\n"
 				"    --verbose       Prints additional log every iteration (4 times a second)\n"
 				"    --help          Prints this help and exit\n\n"
@@ -66,6 +69,7 @@ namespace {
 			{"gpu-id",	required_argument, 0,	0},
 			{"do-not-limit",no_argument,       0,	0},
 			{"fan-ctrl",	required_argument, 0,	0},
+			{"report-max",  no_argument,       0,	0},
 			{"log-csv",	no_argument,       0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
@@ -97,6 +101,8 @@ namespace {
 					opt::do_not_limit = true;
 				} else if (!std::strcmp("fan-ctrl", long_options[option_index].name)) {
 					opt::fan_ctrl = optarg;
+				} else if (!std::strcmp("report-max", long_options[option_index].name)) {
+					opt::report_max = true;
 				} else {
 					throw std::runtime_error((std::string("Unknown option: ") + long_options[option_index].name).c_str());
 				}
@@ -274,7 +280,8 @@ int main(int argc, char *argv[]) {
 		      			MIN_PWR_LIMIT = 50*1000; // min 50k mW
 		// variable target gpu power limit
 		unsigned int	tgt_gpu_pwr_limit = gpu_pwr_limit;
-		size_t		iter = 0;
+		size_t		iter = 0,
+				fan_over_max = 0;
 		if(opt::log_csv) {
 			// print header
 			std::cout << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
@@ -291,6 +298,8 @@ int main(int argc, char *argv[]) {
 			if(opt::log_csv) {
 				std::cout << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
 			}
+			if(cur_fan_speed > opt::max_fan_speed)
+				++fan_over_max;
 
 			auto fn_do_sleep = [&iter](void) -> void {
 				// sleep for 1/4 of a second
@@ -344,6 +353,10 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt::verbose)
 				std::cerr << "Unchanged max power limit: " << gpu_pwr_limit << "mW" << std::endl;
+		}
+		// report how many seconds the fan speed was over max
+		if (opt::report_max) {
+			std::cerr << "Fan speed was above max (" <<opt::max_fan_speed << "%) for " << fan_over_max*opt::sleep_interval_ms/1000 << "s" << std::endl;
 		}
 		// shutdown nvml
 		nvml::nvmlShutdown();
