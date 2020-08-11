@@ -26,16 +26,18 @@
 #include "ctrl.h"
 
 namespace {
-	const char*	VERSION = "0.0.3";
+	const char*	VERSION = "0.0.4";
 
 	// settings/options management
 	namespace opt {
-		unsigned int	max_fan_speed = 80,
+		unsigned int	max_fan_speed = 80, // 80% fan speed
+				max_gpu_temp = 80, // 80 C temperature
 				gpu_id = 0,
 				sleep_interval_ms = 250;
 		bool		do_not_limit = false,
 				verbose = false,
-				log_csv = false;
+				log_csv = false,
+				report_max = false;
 		std::string	fan_ctrl = "simple";
 	}
 
@@ -43,11 +45,15 @@ namespace {
 		std::cerr <<	"Usage: " << prog << " [options]\nExecutes nv-pwr-ctrl " << version << "\n\n"
 				"Controls the power limit of a given Nvidia GPU based on max fan speed\n\n"
 				"-f, --max-fan f     Specifies the target max fan speed, default is " << opt::max_fan_speed << "%\n"
+				"-t, --max-temp t    Specifies the target max gpu temperature, default is " << opt::max_gpu_temp << "C\n"
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
 				"    --do-not-limit  Don't limit power - useful to print stats for testing\n"
 				"    --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:\n"
-				"                    'simple' - Reactive based on current fan speed (default)\n"
-				"                    'wavg'   - Weights averages and smooths transitions\n"
+				"                    'simple'   - Reactive based on current fan speed (default)\n"
+				"                    'wavg'     - Weights averages and smooths transitions\n"
+				"                    'gpu_temp' - Reactive based on GPU temperature alone\n"
+				"    --report-max    On exit prints how many seconds the fan speed has been\n"
+				"                    above max speed\n"
 				"-l, --log-csv       Prints CSV log-like information to std out\n"
 				"    --verbose       Prints additional log every iteration (4 times a second)\n"
 				"    --help          Prints this help and exit\n\n"
@@ -59,9 +65,11 @@ namespace {
 		int			c;
 		static struct option	long_options[] = {
 			{"max-fan",	required_argument, 0,	'f'},
+			{"max-temp",	required_argument, 0,	't'},
 			{"gpu-id",	required_argument, 0,	0},
 			{"do-not-limit",no_argument,       0,	0},
 			{"fan-ctrl",	required_argument, 0,	0},
+			{"report-max",  no_argument,       0,	0},
 			{"log-csv",	no_argument,       0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
@@ -72,7 +80,7 @@ namespace {
 			// getopt_long stores the option index here
 			int		option_index = 0;
 
-			if(-1 == (c = getopt_long(argc, argv, "f:l", long_options, &option_index)))
+			if(-1 == (c = getopt_long(argc, argv, "f:t:l", long_options, &option_index)))
 				break;
 
 			switch (c) {
@@ -93,6 +101,8 @@ namespace {
 					opt::do_not_limit = true;
 				} else if (!std::strcmp("fan-ctrl", long_options[option_index].name)) {
 					opt::fan_ctrl = optarg;
+				} else if (!std::strcmp("report-max", long_options[option_index].name)) {
+					opt::report_max = true;
 				} else {
 					throw std::runtime_error((std::string("Unknown option: ") + long_options[option_index].name).c_str());
 				}
@@ -103,6 +113,12 @@ namespace {
 				const int	f_speed = std::atoi(optarg);
 				if(f_speed > 0 && f_speed <= 100)
 					opt::max_fan_speed = f_speed;
+			} break;
+
+			case 't': {
+				const int	g_temp = std::atoi(optarg);
+				if(g_temp > 0 && g_temp <= 100)
+					opt::max_gpu_temp = g_temp;
 			} break;
 
 			case 'l': {
@@ -149,6 +165,7 @@ namespace nvml {
 	typedef int (*fp_nvmlDeviceGetTemperature)(nvmlDevice_t, const int, unsigned int*);
 	typedef int (*fp_nvmlDeviceGetPowerUsage)(nvmlDevice_t, unsigned int*);
 	typedef int (*fp_nvmlDeviceSetPowerManagementLimit)(nvmlDevice_t, unsigned int);
+	typedef const char* (*fp_nvmlErrorString)(int);
 
 	// functions themselves
 	fp_nvmlInit_v2					nvmlInit_v2 = 0;
@@ -162,6 +179,7 @@ namespace nvml {
 	fp_nvmlDeviceGetTemperature			nvmlDeviceGetTemperature = 0;
 	fp_nvmlDeviceGetPowerUsage			nvmlDeviceGetPowerUsage = 0;
 	fp_nvmlDeviceSetPowerManagementLimit		nvmlDeviceSetPowerManagementLimit = 0;
+	fp_nvmlErrorString				nvmlErrorString = 0;
 
 	void load_functions(void* nvml_so) {
 #define	LOAD_SYMBOL(x) \
@@ -182,6 +200,7 @@ namespace nvml {
 		LOAD_SYMBOL(nvmlDeviceGetTemperature);
 		LOAD_SYMBOL(nvmlDeviceGetPowerUsage);
 		LOAD_SYMBOL(nvmlDeviceSetPowerManagementLimit);
+		LOAD_SYMBOL(nvmlErrorString);
 
 #undef	LOAD_SYMBOL
 	}
@@ -209,7 +228,7 @@ namespace nvml {
 			std::cerr << "Found " << max_gpu << " Nvidia GPUs" << std::endl;
 		if(max_gpu < 1)
 			throw std::runtime_error("Can't find any Nvidia GPU on this system");
-		if(id > max_gpu)
+		if(id >= max_gpu)
 			throw std::runtime_error((std::string("Specified gpu id (") + std::to_string(id) + ") outside of max gpu available (" + std::to_string(max_gpu) + ")").c_str());
 		nvmlDevice_t	dev;
 		if(const int rv = nvmlDeviceGetHandleByIndex_v2(id, &dev))
@@ -227,7 +246,7 @@ int main(int argc, char *argv[]) {
 		std::unique_ptr<void, void(*)(void*)>	nvml_so(dlopen(nvml::SO_NAME, RTLD_LAZY|RTLD_LOCAL), [](void* p){ if(p) dlclose(p); });
 		if(!nvml_so)
 			throw std::runtime_error("Can't find/load NVML");
-		std::unique_ptr<ctrl::throttle>		thr(ctrl::get_fan_ctrl(opt::fan_ctrl, { opt::max_fan_speed, 1000/opt::sleep_interval_ms, opt::verbose }));
+		std::unique_ptr<ctrl::throttle>		thr(ctrl::get_fan_ctrl(opt::fan_ctrl, { opt::max_fan_speed, opt::max_gpu_temp, 1000/opt::sleep_interval_ms, opt::verbose }));
 		// load nvml functions/symbols
 		nvml::load_functions(nvml_so.get());
 
@@ -235,7 +254,7 @@ int main(int argc, char *argv[]) {
 	do { \
 		const int rv = (x); \
 		if(rv) \
-			throw std::runtime_error((std::string(#x) + " failed, error: " + std::to_string(rv)).c_str()); \
+			throw std::runtime_error((std::string(#x) + " failed, error (" + std::to_string(rv) + "): " + nvml::nvmlErrorString(rv)).c_str()); \
 	} while(0);
 
 		// init nvml
@@ -251,7 +270,7 @@ int main(int argc, char *argv[]) {
 		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementDefaultLimit(dev, &gpu_pwr_limit));
 		// print main info
 		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
-		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%" << std::endl;
+		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%, max GPU temp: " << opt::max_gpu_temp << "C" << std::endl;
 		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
 		if(opt::do_not_limit)
 			std::cerr << "Warning: '--do-not-limit' has been set, max power limit won't be modified" << std::endl;
@@ -261,7 +280,8 @@ int main(int argc, char *argv[]) {
 		      			MIN_PWR_LIMIT = 50*1000; // min 50k mW
 		// variable target gpu power limit
 		unsigned int	tgt_gpu_pwr_limit = gpu_pwr_limit;
-		size_t		iter = 0;
+		size_t		iter = 0,
+				fan_over_max = 0;
 		if(opt::log_csv) {
 			// print header
 			std::cout << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
@@ -278,6 +298,8 @@ int main(int argc, char *argv[]) {
 			if(opt::log_csv) {
 				std::cout << iter << "," << cur_fan_speed << "," << cur_gpu_temp << "," << cur_gpu_pwr << "," << tgt_gpu_pwr_limit << std::endl;
 			}
+			if(cur_fan_speed > opt::max_fan_speed)
+				++fan_over_max;
 
 			auto fn_do_sleep = [&iter](void) -> void {
 				// sleep for 1/4 of a second
@@ -331,6 +353,10 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt::verbose)
 				std::cerr << "Unchanged max power limit: " << gpu_pwr_limit << "mW" << std::endl;
+		}
+		// report how many seconds the fan speed was over max
+		if (opt::report_max) {
+			std::cerr << "Fan speed was above max (" <<opt::max_fan_speed << "%) for " << fan_over_max*opt::sleep_interval_ms/1000 << "s" << std::endl;
 		}
 		// shutdown nvml
 		nvml::nvmlShutdown();
