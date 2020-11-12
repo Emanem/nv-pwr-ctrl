@@ -21,7 +21,7 @@ Not sure if there was already such simple utility, I've decided to roll my own, 
 ## How to run
 ```
 Usage: ./nv-pwr-ctrl [options]
-Executes nv-pwr-ctrl 0.0.4
+Executes nv-pwr-ctrl 0.0.5
 
 Controls the power limit of a given Nvidia GPU based on max fan speed
 
@@ -30,13 +30,15 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
     --gpu-id i      Specifies a specific gpu id to control, default is 0
     --do-not-limit  Don't limit power - useful to print stats for testing
     --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:
-                    'simple'   - Reactive based on current fan speed (default)
+                    'simple'   - Reactive based on current fan speed
                     'wavg'     - Weights averages and smooths transitions
                     'gpu_temp' - Reactive based on GPU temperature alone
+                    Default is 'gpu_temp'
     --report-max    On exit prints how many seconds the fan speed has been
                     above max speed
 -l, --log-csv       Prints CSV log-like information to std out
     --verbose       Prints additional log every iteration (4 times a second)
+-c, --current       Prints current power, limit and GPU temperature on std::err
     --help          Prints this help and exit
 
 Run with root/admin privileges to be able to change the power limits
@@ -76,7 +78,7 @@ List of known issues:
 ## F.A.Q
 
 1. *Can I run this on _AMD_ or _Intel_ GPUs?*<br/>No... this is for Nvidia only.
-2. *Can you support open-source Nvidia drivers?*<br/>No, this is using _NVML_ propritary libary.
+2. *Can you support open-source Nvidia drivers?*<br/>No, this is using _NVML_ proprietary libary.
 3. *The lower the fan speen (i.e. -f), the lower the FPS... is this expected?*<br/>Yes, because in order to keep the fan spinning at just _x_%, then the power will be limited. Having less power means keeping the GPU cooler but also less capable of coping with the demands of the CPU and the game.
 4. *Can you add feature *X* please?*<br/>Open a ticket and let's discuss...
 5. *Why didn't you use application *X* to achieve something similar?*<br/>I didn't want to have to install/compile other packages and didn't need _fancy_ UI. I needed a simple app I can spin with a script and stop with `Ctrl+C`. That's it.
@@ -86,6 +88,7 @@ List of known issues:
 ## Task list
 
 - [ ] ???
+- [x] Report current power, limit and GPU temperature on std::err
 - [x] Drive the power limit based on GPU temperature
 - [x] Rename _verbose_ option to _log_
 - [x] `std::cout` writes CSV useful for graphs

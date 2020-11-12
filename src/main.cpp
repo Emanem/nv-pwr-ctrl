@@ -26,7 +26,7 @@
 #include "ctrl.h"
 
 namespace {
-	const char*	VERSION = "0.0.4";
+	const char*	VERSION = "0.0.5";
 
 	// settings/options management
 	namespace opt {
@@ -37,8 +37,9 @@ namespace {
 		bool		do_not_limit = false,
 				verbose = false,
 				log_csv = false,
-				report_max = false;
-		std::string	fan_ctrl = "simple";
+				report_max = false,
+				print_current = false;
+		std::string	fan_ctrl = "gpu_temp";
 	}
 
 	void print_help(const char *prog, const char *version) {
@@ -49,13 +50,15 @@ namespace {
 				"    --gpu-id i      Specifies a specific gpu id to control, default is " << opt::gpu_id << "\n"
 				"    --do-not-limit  Don't limit power - useful to print stats for testing\n"
 				"    --fan-ctrl f    Set the fan control algorithm to 'f'. Valid values are currently:\n"
-				"                    'simple'   - Reactive based on current fan speed (default)\n"
+				"                    'simple'   - Reactive based on current fan speed\n"
 				"                    'wavg'     - Weights averages and smooths transitions\n"
 				"                    'gpu_temp' - Reactive based on GPU temperature alone\n"
+				"                    Default is '" << opt::fan_ctrl << "'\n"
 				"    --report-max    On exit prints how many seconds the fan speed has been\n"
 				"                    above max speed\n"
 				"-l, --log-csv       Prints CSV log-like information to std out\n"
 				"    --verbose       Prints additional log every iteration (4 times a second)\n"
+				"-c, --current       Prints current power, limit and GPU temperature on std::err\n"
 				"    --help          Prints this help and exit\n\n"
 				"Run with root/admin privileges to be able to change the power limits\n\n"
 		<< std::flush;
@@ -73,6 +76,7 @@ namespace {
 			{"log-csv",	no_argument,       0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
+			{"current",	no_argument,	   0,	0},
 			{0, 0, 0, 0}
 		};
 
@@ -80,7 +84,7 @@ namespace {
 			// getopt_long stores the option index here
 			int		option_index = 0;
 
-			if(-1 == (c = getopt_long(argc, argv, "f:t:l", long_options, &option_index)))
+			if(-1 == (c = getopt_long(argc, argv, "f:t:lc", long_options, &option_index)))
 				break;
 
 			switch (c) {
@@ -123,6 +127,10 @@ namespace {
 
 			case 'l': {
 				opt::log_csv = true;
+			} break;
+
+			case 'c': {
+				opt::print_current = true;
 			} break;
 
 			case '?':
@@ -286,6 +294,8 @@ int main(int argc, char *argv[]) {
 			// print header
 			std::cout << "Iteration,Fan Speed (%),GPU Temperature (C),Power Usage (mW),Power Limit (mW)" << std::endl;
 		}
+		if(opt::print_current)
+			std::cerr << std::endl;
 		while(run) {
 			// 1. get the fan speed and temperature
 			unsigned int	cur_fan_speed = 0,
@@ -307,6 +317,10 @@ int main(int argc, char *argv[]) {
 				nanosleep(&ts, 0);
 				++iter;
 			};
+
+			if(opt::print_current) {
+				std::fprintf(stderr, "Current/Target power limit (GPU Temp): %6d/%6d (%2d)\r", cur_gpu_pwr, tgt_gpu_pwr_limit, cur_gpu_temp);
+			}
 
 			if(opt::do_not_limit) {
 				fn_do_sleep();
@@ -342,6 +356,7 @@ int main(int argc, char *argv[]) {
 
 			fn_do_sleep();
 		}
+		std::cerr << "\nExiting" << std::endl;
 		// before quitting, restore original power limits
 		// only if those got changed
 		unsigned int	cur_pwr_limit = 0;
