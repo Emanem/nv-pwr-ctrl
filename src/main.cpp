@@ -26,14 +26,15 @@
 #include "ctrl.h"
 
 namespace {
-	const char*	VERSION = "0.0.5";
+	const char*	VERSION = "0.0.6";
 
 	// settings/options management
 	namespace opt {
 		unsigned int	max_fan_speed = 80, // 80% fan speed
 				max_gpu_temp = 80, // 80 C temperature
 				gpu_id = 0,
-				sleep_interval_ms = 250;
+				sleep_interval_ms = 250,
+				min_limit_pct = 0;
 		bool		do_not_limit = false,
 				verbose = false,
 				log_csv = false,
@@ -56,6 +57,9 @@ namespace {
 				"                    Default is '" << opt::fan_ctrl << "'\n"
 				"    --report-max    On exit prints how many seconds the fan speed has been\n"
 				"                    above max speed\n"
+				"-m, --min-limit     Sets minimum percentage limit as a low threshold of how much the\n"
+				"                    power can be decreased (i.e. 90 would imply power to never go\n"
+				"                    lower than 90% of current max power limit - default 0)\n" 
 				"-l, --log-csv       Prints CSV log-like information to std out\n"
 				"    --verbose       Prints additional log every iteration (4 times a second)\n"
 				"-c, --current       Prints current power, limit and GPU temperature on std::err\n"
@@ -73,6 +77,7 @@ namespace {
 			{"do-not-limit",no_argument,       0,	0},
 			{"fan-ctrl",	required_argument, 0,	0},
 			{"report-max",  no_argument,       0,	0},
+			{"min-limit",	required_argument, 0,	'm'},
 			{"log-csv",	no_argument,       0,	'l'},
 			{"verbose",	no_argument,       0,	0},
 			{"help",	no_argument,	   0,	0},
@@ -84,7 +89,7 @@ namespace {
 			// getopt_long stores the option index here
 			int		option_index = 0;
 
-			if(-1 == (c = getopt_long(argc, argv, "f:t:lc", long_options, &option_index)))
+			if(-1 == (c = getopt_long(argc, argv, "f:t:lcm:", long_options, &option_index)))
 				break;
 
 			switch (c) {
@@ -123,6 +128,12 @@ namespace {
 				const int	g_temp = std::atoi(optarg);
 				if(g_temp > 0 && g_temp <= 100)
 					opt::max_gpu_temp = g_temp;
+			} break;
+
+			case 'm': {
+				const int	m_limit = std::atoi(optarg);
+				if(m_limit > 0 && m_limit <= 100)
+					opt::min_limit_pct = m_limit;
 			} break;
 
 			case 'l': {
@@ -276,9 +287,12 @@ int main(int argc, char *argv[]) {
 		// get default power limit
 		unsigned int	gpu_pwr_limit = 0;
 		SAFE_NVML_CALL(nvml::nvmlDeviceGetPowerManagementDefaultLimit(dev, &gpu_pwr_limit));
+		// set current min barrier limit
+		const unsigned int	min_pwr_limit = opt::min_limit_pct * gpu_pwr_limit / 100;
 		// print main info
 		std::cerr << "Running on GPU[" << opt::gpu_id << "] \"" << gpu_name << "\"" << std::endl;
-		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed << "%, max GPU temp: " << opt::max_gpu_temp << "C" << std::endl;
+		std::cerr << "Current max power limit: " <<  gpu_pwr_limit << "mW, target max fan speed: " << opt::max_fan_speed
+			  << "%, max GPU temp: " << opt::max_gpu_temp << "C, min power limit: " << min_pwr_limit << "mW" << std::endl;
 		std::cerr << "Fan control selected: '" << opt::fan_ctrl << "'" << std::endl;
 		if(opt::do_not_limit)
 			std::cerr << "Warning: '--do-not-limit' has been set, max power limit won't be modified" << std::endl;
@@ -333,6 +347,11 @@ int main(int argc, char *argv[]) {
 			// then start reducing the power limit
 			case ctrl::action::PWR_DEC: {
 				tgt_gpu_pwr_limit -= b_fact*PWR_DELTA;
+				// if we're lesser than the barrier, reset
+				if(tgt_gpu_pwr_limit < min_pwr_limit) {
+					tgt_gpu_pwr_limit = min_pwr_limit;
+				}
+				// ensure we never go below the hard min pwr limit
 				if(tgt_gpu_pwr_limit < MIN_PWR_LIMIT) {
 					tgt_gpu_pwr_limit = MIN_PWR_LIMIT;
 				}

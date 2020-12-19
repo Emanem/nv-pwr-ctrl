@@ -21,7 +21,7 @@ Not sure if there was already such simple utility, I've decided to roll my own, 
 ## How to run
 ```
 Usage: ./nv-pwr-ctrl [options]
-Executes nv-pwr-ctrl 0.0.5
+Executes nv-pwr-ctrl 0.0.6
 
 Controls the power limit of a given Nvidia GPU based on max fan speed
 
@@ -36,13 +36,15 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
                     Default is 'gpu_temp'
     --report-max    On exit prints how many seconds the fan speed has been
                     above max speed
+-m, --min-limit     Sets minimum percentage limit as a low threshold of how much the
+                    power can be decreased (i.e. 90 would imply power to never go
+                    lower than 90% of current max power limit - default 0)
 -l, --log-csv       Prints CSV log-like information to std out
     --verbose       Prints additional log every iteration (4 times a second)
 -c, --current       Prints current power, limit and GPU temperature on std::err
     --help          Prints this help and exit
 
 Run with root/admin privileges to be able to change the power limits
-
 ```
 One can simply run the utility with `sudo ./nv-pwr-ctrl` and then push `Ctrl+C` to quit.
 
@@ -88,6 +90,7 @@ List of known issues:
 ## Task list
 
 - [ ] ???
+- [x] Added minimum power limit barrier to avoid constrainig the GPU too much
 - [x] Report current power, limit and GPU temperature on std::err
 - [x] Drive the power limit based on GPU temperature
 - [x] Rename _verbose_ option to _log_
