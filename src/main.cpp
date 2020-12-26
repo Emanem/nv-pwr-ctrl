@@ -144,8 +144,9 @@ namespace {
 				opt::print_current = true;
 			} break;
 
-			case '?':
-			break;
+			case '?': {
+				return -1;
+			} break;
 
 			default:
 				throw std::runtime_error((std::string("Invalid option '") + (char)c + "'").c_str());
@@ -262,6 +263,8 @@ int main(int argc, char *argv[]) {
 		std::signal(SIGINT, sigint_handler);
 		// parse args and load nvml
 		const auto				rv = parse_args(argc, argv, argv[0], VERSION);
+		if(rv < 0)
+			return -1;
 		std::unique_ptr<void, void(*)(void*)>	nvml_so(dlopen(nvml::SO_NAME, RTLD_LAZY|RTLD_LOCAL), [](void* p){ if(p) dlclose(p); });
 		if(!nvml_so)
 			throw std::runtime_error("Can't find/load NVML");
