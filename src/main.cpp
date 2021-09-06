@@ -336,7 +336,7 @@ int main(int argc, char *argv[]) {
 			};
 
 			if(opt::print_current) {
-				std::fprintf(stderr, "Current/Target power limit (GPU Temp/Fan Speed): %6d/%6d (%2dC/%3d%%) \r", cur_gpu_pwr, tgt_gpu_pwr_limit, cur_gpu_temp, cur_fan_speed);
+				std::fprintf(stderr, "Current/Target power limit (GPU Temp/Fan Speed): %6d/%6d (%2dC/%2d%%) \r", cur_gpu_pwr, tgt_gpu_pwr_limit, cur_gpu_temp, cur_fan_speed);
 			}
 
 			if(opt::do_not_limit) {
