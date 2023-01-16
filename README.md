@@ -21,7 +21,7 @@ Not sure if there was already such simple utility, I've decided to roll my own, 
 ## How to run
 ```
 Usage: ./nv-pwr-ctrl [options]
-Executes nv-pwr-ctrl 0.0.6
+Executes nv-pwr-ctrl 0.1.0
 
 Controls the power limit of a given Nvidia GPU based on max fan speed
 
@@ -34,6 +34,7 @@ Controls the power limit of a given Nvidia GPU based on max fan speed
                     'wavg'     - Weights averages and smooths transitions
                     'gpu_temp' - Reactive based on GPU temperature alone
                     Default is 'gpu_temp'
+-w, --max-mwatt     Specifies a maximum power limit (in mW) without dynamically adjust it
     --report-max    On exit prints how many seconds the fan speed has been
                     above max speed
 -m, --min-limit     Sets minimum percentage limit as a low threshold of how much the
